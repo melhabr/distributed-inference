@@ -1,0 +1,134 @@
+# Inference code in file was adapted from https://gist.github.com/aallan/6778b5a046aef3a76966e335ca186b7f
+
+import argparse
+import cv2
+import os
+import numpy as np
+import time
+
+from PIL import Image
+from PIL import ImageFont, ImageDraw, ImageColor
+from tcp_latency import measure_latency
+
+from edgetpu.detection.engine import DetectionEngine
+from relay import Relay
+
+def draw_text(img, coords, text):
+
+    margin = 3
+    img_h, img_w, _ = img.shape
+    size = cv2.getTextSize(text, cv2.FONT_HERSHEY_PLAIN, 1.0, 1)
+    w = size[0][0] + margin*2
+    h = size[0][1] + margin*2
+    patch = np.zeros((h, w, 3), dtype=np.uint8)
+    patch[...] = (200, 0, 0)
+    cv2.putText(patch, text, (margin+1, h-margin-2), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1, lineType=cv2.LINE_8)
+    cv2.rectangle(patch, (0, 0), (w-1, h-1), (0, 0, 0), thickness=1)
+    w = min(w, img_w - coords[0])
+    h = min(h, img_h - coords[1])
+    roi = img[coords[1]:coords[1]+h, coords[0]:coords[0]+w, :]
+    cv2.addWeighted(patch[0:h, 0:w, :], 0.5, roi, 0.5, 0, roi)
+    return img
+
+    
+def ReadLabelFile(file):
+    with open(file, 'r') as f:
+        lines = f.readlines()
+    ret = {}
+    for line in lines:
+        pair = line.strip().split(maxsplit=1)
+        ret[int(pair[0])] = pair[1].strip()
+    return ret
+        
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', help='Path of the detection model.', required=True, type=str)
+    parser.add_argument('--ip', "-i", help='File path of the input image.', required=True, type=str)
+    parser.add_argument('--report_interval', '-r', help="Duration of reporting interval, in seconds", default=10, type=int)
+    parser.add_argument('-v', "--verbose", help="Print information about detected objects", action='store_true')
+    args = parser.parse_args()
+
+    relay = Relay(args.ip)
+
+    engine = DetectionEngine(args.model)
+
+    numread = 0
+    avg_preproc_time_c = 0.
+    avg_preproc_time_w = 0.
+    avg_infer_time_c = 0.
+    avg_infer_time_w = 0.
+    avg_postproc_time_c = 0.
+    avg_postproc_time_w = 0.
+    display_timer = time.time()
+    start_time = time.time()
+
+    while True:
+
+        img = relay.get_image()
+
+        if img is None:
+            break
+
+        start_w = time.time()
+        start_c = time.process_time()
+        initial_h, initial_w, _ = img.shape
+        frame = cv2.resize(img, (300, 300))
+        end_c = time.process_time()
+        end_w = time.time()
+
+        avg_preproc_time_w = avg_preproc_time_w + ( (end_w - start_w) - avg_preproc_time_w)/(numread + 1)
+        avg_preproc_time_c = avg_preproc_time_c + ( (end_c - start_c) - avg_preproc_time_c)/(numread + 1)
+        
+        start_w = time.time()
+        start_c = time.process_time()
+        ans = engine.detect_with_input_tensor(frame.flatten(), threshold=0.5, top_k=10)
+        end_c = time.process_time()
+        end_w = time.time()
+
+        avg_infer_time_w = avg_infer_time_w + ( (end_w - start_w) - avg_infer_time_w)/(numread + 1)
+        avg_infer_time_c = avg_infer_time_c + ( (end_c - start_c) - avg_infer_time_c)/(numread + 1)
+
+        start_w = time.time()
+        start_c = time.process_time()    
+        # Display result
+        if ans:
+            results = []
+            for obj in ans:
+
+                box = obj.bounding_box.flatten().tolist()
+                bbox = [0] * 4
+                bbox[0] = int(box[0] * initial_w)
+                bbox[1] = int(box[1] * initial_h)
+                bbox[2] = int(box[2] * initial_w)
+                bbox[3] = int(box[3] * initial_h)
+
+                result = (bbox, obj.label_id + 1, obj.score)
+                results.append(result)
+
+            relay.send_results(results)
+
+        end_c = time.process_time()
+        end_w = time.time()
+
+        avg_postproc_time_w = avg_postproc_time_w + ( (end_w - start_w) - avg_postproc_time_w)/(numread + 1)
+        avg_postproc_time_c = avg_postproc_time_c + ( (end_c - start_c) - avg_postproc_time_c)/(numread + 1)    
+
+        numread += 1
+
+        if time.time() - display_timer > args.report_interval:
+            display_timer = time.time()
+            print("--------------------------------")
+            print("Average time of preprocessing - CPU: {}ms, wall: {}ms".format(
+                round(avg_preproc_time_c * 1000, 3), round(avg_preproc_time_w * 1000, 3)))
+            print("Average time of inference - CPU: {}ms, wall: {}ms".format(
+                round(avg_infer_time_c * 1000, 3), round(avg_infer_time_w * 1000, 3)))
+            print("Average time of postprocessing - CPU: {}ms, wall: {}ms".format(
+                round(avg_postproc_time_c * 1000, 3), round(avg_postproc_time_w * 1000, 3)))
+            print("Current FPS: ", numread/(time.time() - start_time))
+            print("TCP Latency to source: ", measure_latency(host=args.input.strip('http://').split(':')[0],
+                                                             port=args.input.strip('http://').split(':')[1])[0], "ms") 
+
+    relay.close()
+
+if __name__ == '__main__':
+    main()
