@@ -75,10 +75,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", "-i", help="File path to input image", required=True)
     parser.add_argument("--port", "-p", help="Listening port to use", default=45005, type=int)
+    parser.add_argument("--labels", "-l", help="Path of labels file")
     args = parser.parse_args()
 
-    vcap = cv2.VideoCapture(args.input)
-
+    if args.labels:
+        labels = di_utils.read_labels(args.labels)
     sp = SocketPool(args.port)
 
     input("Press enter to stop accepting connections and begin transmission\n")
@@ -97,7 +98,7 @@ def main():
         labeled_img = np.copy(img)
         for prop in result:
             di_utils.draw_label(labeled_img, (prop[0], prop[1], prop[2], prop[3]),
-                                prop[4], prop[5])
+                                prop[4], prop[5], labels=labels)
         cv2.imwrite("out/out{}.jpg".format(idx), labeled_img)
 
     sp.close()

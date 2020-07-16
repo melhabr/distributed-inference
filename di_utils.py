@@ -1,10 +1,21 @@
 import numpy as np
 import cv2
 
+
+def read_labels(path):
+    labels = {}
+    f = open(path, "r")
+    for line in f:
+        s = line.split()
+        labels.update({int(s[0]): " ".join(s[1:])})
+    f.close()
+    return labels
+
+
 # Based on JK Jung's visualization function
 # https://github.com/jkjung-avt/tensorrt_demos/blob/master/utils/visualization.py
 
-def draw_label(img, bbox, id, conf):
+def draw_label(img, bbox, id, conf, labels=None):
     img_h, img_w, _ = img.shape
 
     if bbox[0] >= img_w or bbox[1] >= img_h:
@@ -12,7 +23,7 @@ def draw_label(img, bbox, id, conf):
 
     cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (232, 35, 244), 2)
 
-    text = "{} {}".format(id, round(conf, 2))
+    text = "{} {}".format(labels[id] if labels else id, round(conf, 2))
 
     margin = 3
     size = cv2.getTextSize(text, cv2.FONT_HERSHEY_PLAIN, 1.0, 1)
