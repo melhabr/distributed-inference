@@ -236,7 +236,6 @@ def main():
                 round(recent_infer_time_w * 1000, 3)))
             print("Average time of postprocessing - CPU: {}ms, wall: {}ms".format(
                 round(avg_postproc_time_c * 1000, 3), round(avg_postproc_time_w * 1000, 3)))
-            print("Current FPS: ", numread / (time.time() - start_time))
             print("TCP Latency to source: ", round(measure_latency(host=args.ip, port=relay.port)[0], 3), "ms")
 
         numread += 1

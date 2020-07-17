@@ -97,7 +97,6 @@ def main():
                 round(avg_infer_time_c * 1000, 3), round(avg_infer_time_w * 1000, 3)))
             print("Average time of postprocessing - CPU: {}ms, wall: {}ms".format(
                 round(avg_postproc_time_c * 1000, 3), round(avg_postproc_time_w * 1000, 3)))
-            print(args.ip, " ", relay.port, " ", measure_latency(host=args.ip, port=8080))
             print("TCP Latency to source: ", round(measure_latency(host=args.ip, port=relay.port)[0], 3), "ms")
 
     relay.close()
