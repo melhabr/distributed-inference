@@ -49,7 +49,8 @@ class Relay:
                 buf += data
                 remaining -= len(data)
 
-            img = cv2.imdecode(np.fromstring(buf, dtype=np.uint8), 1)
+            img = cv2.imdecode(np.fromstring(buf, dtype=np.uint8), cv2.IMREAD_COLOR)
+
             self.images.append(img)
             buf = b''
 

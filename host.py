@@ -92,7 +92,9 @@ def main():
     for conn in sp.conns:
         print("sending image of size ", len(data))
         conn[0].sendall(struct.pack("I", len(data)) + data)
-        results.append(get_infer_result(conn[0]))
+        result = get_infer_result(conn[0])
+        result = [prop for prop in result if prop[4] != 0] # strip out background results
+        results.append(result)
 
     for idx, result in enumerate(results):
         labeled_img = np.copy(img)

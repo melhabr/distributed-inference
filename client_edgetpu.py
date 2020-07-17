@@ -12,33 +12,6 @@ from tcp_latency import measure_latency
 
 from edgetpu.detection.engine import DetectionEngine
 from relay import Relay
-
-def draw_text(img, coords, text):
-
-    margin = 3
-    img_h, img_w, _ = img.shape
-    size = cv2.getTextSize(text, cv2.FONT_HERSHEY_PLAIN, 1.0, 1)
-    w = size[0][0] + margin*2
-    h = size[0][1] + margin*2
-    patch = np.zeros((h, w, 3), dtype=np.uint8)
-    patch[...] = (200, 0, 0)
-    cv2.putText(patch, text, (margin+1, h-margin-2), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), thickness=1, lineType=cv2.LINE_8)
-    cv2.rectangle(patch, (0, 0), (w-1, h-1), (0, 0, 0), thickness=1)
-    w = min(w, img_w - coords[0])
-    h = min(h, img_h - coords[1])
-    roi = img[coords[1]:coords[1]+h, coords[0]:coords[0]+w, :]
-    cv2.addWeighted(patch[0:h, 0:w, :], 0.5, roi, 0.5, 0, roi)
-    return img
-
-    
-def ReadLabelFile(file):
-    with open(file, 'r') as f:
-        lines = f.readlines()
-    ret = {}
-    for line in lines:
-        pair = line.strip().split(maxsplit=1)
-        ret[int(pair[0])] = pair[1].strip()
-    return ret
         
 def main():
     parser = argparse.ArgumentParser()
@@ -73,6 +46,7 @@ def main():
         start_c = time.process_time()
         initial_h, initial_w, _ = img.shape
         frame = cv2.resize(img, (300, 300))
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         end_c = time.process_time()
         end_w = time.time()
 
