@@ -4,10 +4,12 @@ import argparse
 import cv2
 import struct
 import numpy as np
+import time
 
 import di_utils
 
 args = None
+
 
 class SocketPool:
 
@@ -15,34 +17,40 @@ class SocketPool:
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.bind(('', port))
         self.s.listen()
-        self.stop = False
+        self.close_new = False
         self.conns = []
 
         t = threading.Thread(target=self.add_connections, daemon=True)
         t.start()
 
     def add_connections(self):
-        while not self.stop:
+        while True:
             res = self.s.accept()
-            self.conns.append(res)
-            print("Added a new connection, {}. {} connections total"
-                  .format(res, len(self.conns)))
+            if not self.close_new:
+                self.conns.append(res)
+                print("Added a new connection, {}. {} connections total"
+                      .format(res, len(self.conns)))
+
+    def get_connections(self):
+        return self.conns.copy()
+
+    def remove_connection(self, conn):
+        self.conns.remove(conn)
 
     def close(self):
-        stop = True
+        self.close_new = True
         for conn in self.conns:
             conn[0].close()
         self.s.close()
 
-def get_infer_result(conn):
 
+def get_infer_result(conn):
     buf = b''
     results = []
 
     data = conn.recv(4096)
-    if data is None:
+    if data == b'':
         return None
-
     num_results = data[0]
 
     if len(data) == 1:
@@ -54,7 +62,7 @@ def get_infer_result(conn):
     while num_results > 0:
 
         data = conn.recv(4096)
-        if data is None:
+        if data == b'':
             print("ERROR: Inference signal stopped mid-transmission")
             return
 
@@ -71,6 +79,11 @@ def get_infer_result(conn):
     return results
 
 
+def send_image(conn, img):
+    data = cv2.imencode(".jpg", img)[1].tostring()
+    conn.sendall(struct.pack("I", len(data)) + data)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", "-i", help="File path to input image", required=True)
@@ -83,25 +96,27 @@ def main():
     sp = SocketPool(args.port)
 
     input("Press enter to stop accepting connections and begin transmission\n")
-    sp.stop = True
+    sp.close_new = True
 
     img = cv2.imread(args.input)
-    data = cv2.imencode(".jpg", img)[1].tostring()
 
-    results = []
-    for conn in sp.conns:
-        print("sending image of size ", len(data))
-        conn[0].sendall(struct.pack("I", len(data)) + data)
+    for idx, conn in enumerate(sp.get_connections()):
+        start = time.time()
+        send_image(conn[0], img)
         result = get_infer_result(conn[0])
-        result = [prop for prop in result if prop[4] != 0] # strip out background results
-        results.append(result)
-
-    for idx, result in enumerate(results):
+        if result is None:
+            sp.remove_connection(conn)
+            continue
+        end = time.time()
+        print("Connection {} took time {}ms".format(idx, round((end - start) * 1000, 3)))
         labeled_img = np.copy(img)
         for prop in result:
             di_utils.draw_label(labeled_img, (prop[0], prop[1], prop[2], prop[3]),
                                 prop[4], prop[5], labels=labels)
         cv2.imwrite("out/out{}.jpg".format(idx), labeled_img)
+
+    while True:
+        pass # The program needs to stay alive to allow for TCP ping measurement
 
     sp.close()
 

@@ -10,6 +10,7 @@ import cv2
 class Relay:
 
     def __init__(self, ip, port=45005):
+        self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((ip, port))
         self.images = []
@@ -36,7 +37,6 @@ class Relay:
                 buf += data
 
             remaining = struct.unpack("I", buf[0:4])[0]
-            print("receiving image of size, ", remaining)
             buf = buf[4:]
             remaining -= len(buf)
 
@@ -69,7 +69,6 @@ class Relay:
 
         self.socket.sendall(struct.pack("B", len(results)))
 
-        print(results)
         for result in results:
             # TODO: optimize by removing padding (is 16, should be 14)
             data = struct.pack("HHHHHf",

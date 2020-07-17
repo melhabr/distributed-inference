@@ -32,8 +32,7 @@ def main():
     avg_infer_time_w = 0.
     avg_postproc_time_c = 0.
     avg_postproc_time_w = 0.
-    display_timer = time.time()
-    start_time = time.time()
+    display_timer = -1000
 
     while True:
 
@@ -98,9 +97,8 @@ def main():
                 round(avg_infer_time_c * 1000, 3), round(avg_infer_time_w * 1000, 3)))
             print("Average time of postprocessing - CPU: {}ms, wall: {}ms".format(
                 round(avg_postproc_time_c * 1000, 3), round(avg_postproc_time_w * 1000, 3)))
-            print("Current FPS: ", numread/(time.time() - start_time))
-            print("TCP Latency to source: ", measure_latency(host=args.input.strip('http://').split(':')[0],
-                                                             port=args.input.strip('http://').split(':')[1])[0], "ms") 
+            print(args.ip, " ", relay.port, " ", measure_latency(host=args.ip, port=8080))
+            print("TCP Latency to source: ", round(measure_latency(host=args.ip, port=relay.port)[0], 3), "ms")
 
     relay.close()
 
