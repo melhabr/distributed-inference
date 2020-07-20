@@ -44,13 +44,16 @@ def main():
         start_w = time.time()
         start_c = time.process_time()
         initial_h, initial_w, _ = img.shape
-        frame = cv2.resize(img, (300, 300))
+        if (initial_h, initial_w) != (300, 300):
+            frame = cv2.resize(img, (300, 300))
+        else:
+            frame = img
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         end_c = time.process_time()
         end_w = time.time()
 
-        avg_preproc_time_w = avg_preproc_time_w + ( (end_w - start_w) - avg_preproc_time_w)/(numread + 1)
-        avg_preproc_time_c = avg_preproc_time_c + ( (end_c - start_c) - avg_preproc_time_c)/(numread + 1)
+        avg_preproc_time_w = avg_preproc_time_w + ((end_w - start_w) - avg_preproc_time_w)/(numread + 1)
+        avg_preproc_time_c = avg_preproc_time_c + ((end_c - start_c) - avg_preproc_time_c)/(numread + 1)
         
         start_w = time.time()
         start_c = time.process_time()

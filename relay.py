@@ -9,7 +9,7 @@ import cv2
 
 class Relay:
 
-    def __init__(self, ip, port=45005):
+    def __init__(self, ip, port=8080):
         self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((ip, port))

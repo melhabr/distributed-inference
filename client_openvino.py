@@ -38,7 +38,7 @@ def build_argparser():
     args.add_argument('-h', '--help', action='help', default=SUPPRESS, help='Show this help message and exit.')
     args.add_argument("-m", "--model", help="Required. Path to an .xml file with a trained model.",
                       required=True, type=str)
-    args.add_argument("--ip", help="Required. Path to video file.",
+    args.add_argument("--ip", help="Required. IP of host computer.",
                       required=True, type=str)
     args.add_argument("-l", "--cpu_extension",
                       help="Optional. Required for CPU custom layers. "
@@ -52,6 +52,7 @@ def build_argparser():
     args.add_argument("-nt", "--number_top", help="Optional. Number of top results", default=10, type=int)
     args.add_argument('--report_interval', '-r', help="Duration of reporting interval, in seconds", default=10,
                       type=int)
+    args.add_argument("--verbose", "-v", help="Print inference results", action='store_true')
     return parser
 
 
@@ -165,7 +166,6 @@ def main():
     avg_postproc_time_c = 0.
     avg_postproc_time_w = 0.
     display_timer = -1000
-    start_time = time.time()
 
     while True:
 
@@ -207,6 +207,8 @@ def main():
 
             if int(proposal[1]) == 0:
                 continue
+            if proposal[2] < 0.5:
+                continue
 
             box = [0] * 4
 
@@ -218,6 +220,8 @@ def main():
             result = (box, int(proposal[1]), proposal[2])
             results.append(result)
 
+        if args.verbose:
+            print(results)
         relay.send_results(results)
 
         end_c = time.process_time()
