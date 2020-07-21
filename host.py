@@ -122,17 +122,16 @@ def main():
                       round((get_end - first_rec_time) * 1000, 3), round((get_end - send_start) * 1000, 3)))
 
         labeled_img = np.copy(img)
-        for prop in result:
-            adj = (int(prop[0] * iw / 300),
-                   int(prop[1] * ih / 300),
-                   int(prop[2] * iw / 300),
-                   int(prop[3] * ih / 300),)
-            if args.labels:
-                di_utils.draw_label(labeled_img, (adj[0], adj[1], adj[2], adj[3]),
-                                    prop[4], prop[5], labels=labels)
-            else:
-                di_utils.draw_label(labeled_img, (adj[0], adj[1], adj[2], adj[3]),
-                                    prop[4], prop[5])
+
+        result = [((int(x1 * iw / 300),
+                    int(y1 * ih / 300),
+                    int(x2 * iw / 300),
+                    int(y2 * ih / 300), cls, conf)) for (x1, y1, x2, y2, cls, conf) in result]
+
+        if args.labels:
+            di_utils.draw_labels(labeled_img, result, labels=labels)
+        else:
+            di_utils.draw_labels(labeled_img, result)
         cv2.imwrite("out/out{}.jpg".format(idx), labeled_img)
 
     while True:
