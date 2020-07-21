@@ -127,8 +127,12 @@ def main():
                    int(prop[1] * ih / 300),
                    int(prop[2] * iw / 300),
                    int(prop[3] * ih / 300),)
-            di_utils.draw_label(labeled_img, (adj[0], adj[1], adj[2], adj[3]),
-                                prop[4], prop[5], labels=labels)
+            if args.labels:
+                di_utils.draw_label(labeled_img, (adj[0], adj[1], adj[2], adj[3]),
+                                    prop[4], prop[5], labels=labels)
+            else:
+                di_utils.draw_label(labeled_img, (adj[0], adj[1], adj[2], adj[3]),
+                                    prop[4], prop[5])
         cv2.imwrite("out/out{}.jpg".format(idx), labeled_img)
 
     while True:
