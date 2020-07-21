@@ -3,7 +3,6 @@
 
 import argparse
 import cv2
-import time
 import numpy as np
 
 import pycuda.autoinit
@@ -12,7 +11,7 @@ import pycuda.driver as cuda
 import tensorrt as trt
 
 from relay import Relay
-
+from stopwatch import Stopwatch
 
 def main():
     parser = argparse.ArgumentParser()
@@ -52,15 +51,7 @@ def main():
             cuda_outputs.append(cuda_mem)
     context = engine.create_execution_context()
 
-
-    numread = 0
-    avg_preproc_time_c = 0.
-    avg_preproc_time_w = 0.
-    avg_infer_time_c = 0.
-    avg_infer_time_w = 0.
-    avg_postproc_time_c = 0.
-    avg_postproc_time_w = 0.
-    display_timer = -1000
+    watch = Stopwatch()
 
     while True:
 
@@ -70,9 +61,7 @@ def main():
             break
 
         # Preprocessing:
-        start_w = time.time()
-        start_c = time.process_time()
-
+        watch.start()
         ih, iw = img.shape[:-1]
         if (iw, ih) != input_shape:
             img = cv2.resize(img, input_shape)
@@ -82,28 +71,18 @@ def main():
         img -= 1.0
 
         np.copyto(host_inputs[0], img.ravel())
-        end_c = time.process_time()
-        end_w = time.time()
+        watch.stop(Stopwatch.MODE_PREPROCESS)
 
-        avg_preproc_time_c = avg_preproc_time_c + ((end_c - start_c) - avg_preproc_time_c) / (numread + 1)
-        avg_preproc_time_w = avg_preproc_time_w + ((end_w - start_w) - avg_preproc_time_w) / (numread + 1)
-
-        start_w = time.time()
-        start_c = time.process_time()
+        watch.start()
         cuda.memcpy_htod_async(cuda_inputs[0], host_inputs[0], stream)
         context.execute_async(batch_size=1, bindings=bindings, stream_handle=stream.handle)
         cuda.memcpy_dtoh_async(host_outputs[1], cuda_outputs[1], stream)
         cuda.memcpy_dtoh_async(host_outputs[0], cuda_outputs[0], stream)
         stream.synchronize()
-        end_c = time.process_time()
-        end_w = time.time()
-
-        avg_infer_time_c = avg_infer_time_c + ((end_c - start_c) - avg_infer_time_c) / (numread + 1)
-        avg_infer_time_w = avg_infer_time_w + ((end_w - start_w) - avg_infer_time_w) / (numread + 1)
+        watch.stop(Stopwatch.MODE_INFER)
 
         # Postprocessing
-        start_w = time.time()
-        start_c = time.process_time()
+        watch.start()
         output = host_outputs[0]
         results = []
         for prefix in range(0, len(output), 7):
@@ -123,23 +102,9 @@ def main():
 
         relay.send_results(results)
 
-        end_c = time.process_time()
-        end_w = time.time()
+        watch.stop(Stopwatch.MODE_POSTPROCESS)
 
-        avg_postproc_time_c = avg_postproc_time_c + ((end_c - start_c) - avg_postproc_time_c) / (numread + 1)
-        avg_postproc_time_w = avg_postproc_time_w + ((end_w - start_w) - avg_postproc_time_w) / (numread + 1)
-
-        numread += 1
-
-        if time.time() - display_timer > args.report_interval:
-            display_timer = time.time()
-            print("--------------------------------")
-            print("Average time of preprocessing - CPU: {}ms, wall: {}ms".format(
-                round(avg_preproc_time_c * 1000, 3), round(avg_preproc_time_w * 1000, 3)))
-            print("Average time of inference - CPU: {}ms, wall: {}ms".format(
-                round(avg_infer_time_c * 1000, 3), round(avg_infer_time_w * 1000, 3)))
-            print("Average time of postprocessing - CPU: {}ms, wall: {}ms".format(
-                round(avg_postproc_time_c * 1000, 3), round(avg_postproc_time_w * 1000, 3)))
+        if watch.report():
             print("TCP Latency to source: ", round(measure_latency(host=args.ip, port=relay.port)[0], 3), "ms")
 
         relay.close()

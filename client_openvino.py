@@ -27,10 +27,10 @@ import numpy as np
 import logging as log
 from openvino.inference_engine import IECore, IENetwork
 
-import time
 from tcp_latency import measure_latency
 
 from relay import Relay
+from stopwatch import Stopwatch
 
 def build_argparser():
     parser = ArgumentParser(add_help=False)
@@ -158,14 +158,7 @@ def main():
 
     relay = Relay(args.ip)
 
-    numread = 0
-    avg_preproc_time_c = 0.
-    avg_preproc_time_w = 0.
-    avg_infer_time_c = 0.
-    avg_infer_time_w = 0.
-    avg_postproc_time_c = 0.
-    avg_postproc_time_w = 0.
-    display_timer = -1000
+    watch = Stopwatch()
 
     while True:
 
@@ -174,34 +167,21 @@ def main():
         if img is None:
             break
 
-        start_w = time.time()
-        start_c = time.process_time()
+        watch.start()
         ih, iw = img.shape[:-1]
         if (ih, iw) != (h, w):
             img = cv2.resize(img, (w, h))
         img = img.transpose((2, 0, 1))  # Change data layout from HWC to CHW
-        end_c = time.process_time()
-        end_w = time.time()
+        watch.stop(Stopwatch.MODE_PREPROCESS)
 
-        avg_preproc_time_w = avg_preproc_time_w + ((end_w - start_w) - avg_preproc_time_w) / (numread + 1)
-        avg_preproc_time_c = avg_preproc_time_c + ((end_c - start_c) - avg_preproc_time_c) / (numread + 1)
-
+        watch.start()
         data[input_name] = img
-        start_w = time.time()
-        start_c = time.process_time()
         res = exec_net.infer(inputs=data)
         res = res[out_blob]
         res = res[0][0]
-        end_c = time.process_time()
-        end_w = time.time()
+        watch.stop(Stopwatch.MODE_INFER)
 
-        avg_infer_time_w = avg_infer_time_w + ((end_w - start_w) - avg_infer_time_w) / (numread + 1)
-        avg_infer_time_c = avg_infer_time_c + ((end_c - start_c) - avg_infer_time_c) / (numread + 1)
-        recent_infer_time_w = end_w - start_w
-
-        start_w = time.time()
-        start_c = time.process_time()
-
+        watch.start()
         results = []
         for proposal in res:
 
@@ -223,26 +203,10 @@ def main():
         if args.verbose:
             print(results)
         relay.send_results(results)
+        watch.stop(Stopwatch.MODE_POSTPROCESS)
 
-        end_c = time.process_time()
-        end_w = time.time()
-
-        avg_postproc_time_w = avg_postproc_time_w + ((end_w - start_w) - avg_postproc_time_w) / (numread + 1)
-        avg_postproc_time_c = avg_postproc_time_c + ((end_c - start_c) - avg_postproc_time_c) / (numread + 1)
-
-        if time.time() - display_timer > args.report_interval:
-            display_timer = time.time()
-            print("--------------------------------")
-            print("Average time of preprocessing - CPU: {}ms, wall: {}ms".format(
-                round(avg_preproc_time_c * 1000, 3), round(avg_preproc_time_w * 1000, 3)))
-            print("Average time of inference - CPU: {}ms, wall: {}ms (recent: {}ms)".format(
-                round(avg_infer_time_c * 1000, 3), round(avg_infer_time_w * 1000, 3),
-                round(recent_infer_time_w * 1000, 3)))
-            print("Average time of postprocessing - CPU: {}ms, wall: {}ms".format(
-                round(avg_postproc_time_c * 1000, 3), round(avg_postproc_time_w * 1000, 3)))
+        if watch.report():
             print("TCP Latency to source: ", round(measure_latency(host=args.ip, port=relay.port)[0], 3), "ms")
-
-        numread += 1
 
     relay.close()
 
