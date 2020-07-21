@@ -9,10 +9,18 @@ import cv2
 
 class Relay:
 
-    def __init__(self, ip, port=8080):
-        self.port = port
+    def __init__(self, ip):
+
+        s = ip.split(':')
+        if len(s) > 1:
+            self.ip = s[0]
+            self.port = int(s[1])
+        else:
+            self.ip = s[0]
+            self.port = 8080
+
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((ip, port))
+        self.socket.connect((self.ip, self.port))
         self.images = []
         self.stop = False
 

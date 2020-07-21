@@ -9,6 +9,7 @@ import time
 import di_utils
 
 args = None
+first_rec_time = None
 
 
 class SocketPool:
@@ -49,6 +50,8 @@ def get_infer_result(conn):
     results = []
 
     data = conn.recv(4096)
+    global first_rec_time
+    first_rec_time = time.time()
     if data == b'':
         return None
     num_results = data[0]
@@ -101,20 +104,23 @@ def main():
     img = cv2.imread(args.input)
     ih, iw = img.shape[:-1]
     if (iw, ih) != (300, 300):
-    #if False:
         frame = cv2.resize(img, (300, 300))
     else:
         frame = img
 
     for idx, conn in enumerate(sp.get_connections()):
-        start = time.time()
+        send_start = time.time()
         send_image(conn[0], frame)
+        send_end = time.time()
         result = get_infer_result(conn[0])
+        get_end = time.time()
         if result is None:
             sp.remove_connection(conn)
             continue
-        end = time.time()
-        print("Connection {} took time {}ms".format(idx, round((end - start) * 1000, 3)))
+        print("Connection {}: Send: {}ms | Gap: {}ms | Get: {}ms | Total: {}ms"
+              .format(idx, round((send_end - send_start) * 1000, 3), round((first_rec_time - send_end) * 1000, 3),
+                      round((get_end - first_rec_time) * 1000, 3), round((get_end - send_start) * 1000, 3)))
+
         labeled_img = np.copy(img)
         for prop in result:
             adj = (int(prop[0] * iw / 300),
@@ -126,7 +132,7 @@ def main():
         cv2.imwrite("out/out{}.jpg".format(idx), labeled_img)
 
     while True:
-        pass # The program needs to stay alive to allow for TCP ping measurement
+        pass  # The program needs to stay alive to allow for TCP ping measurement
 
     sp.close()
 
