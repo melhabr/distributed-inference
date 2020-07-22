@@ -8,13 +8,9 @@ import time
 
 import di_utils
 
-args = None
-first_rec_time = None
+class Host:
 
-
-class SocketPool:
-
-    def __init__(self, port):
+    def __init__(self, port=8080):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.bind(('', port))
         self.s.listen()
@@ -23,6 +19,10 @@ class SocketPool:
 
         t = threading.Thread(target=self.add_connections, daemon=True)
         t.start()
+        self.first_rec_time = 0
+
+        input("Press enter to stop accepting connections and begin transmission\n")
+        self.close_new = True
 
     def add_connections(self):
         while True:
@@ -31,9 +31,6 @@ class SocketPool:
                 self.conns.append(res)
                 print("Added a new connection, {}. {} connections total"
                       .format(res, len(self.conns)))
-
-    def get_connections(self):
-        return self.conns.copy()
 
     def remove_connection(self, conn):
         self.conns.remove(conn)
@@ -44,47 +41,67 @@ class SocketPool:
             conn[0].close()
         self.s.close()
 
-
-def get_infer_result(conn):
-    buf = b''
-    results = []
-
-    data = conn.recv(4096)
-    global first_rec_time
-    first_rec_time = time.time()
-    if data == b'':
-        return None
-    num_results = data[0]
-
-    if len(data) == 1:
+    def get_infer_result(self, conn):
         buf = b''
-    else:
-        data = data[1:]
-        buf += data
-
-    while num_results > 0:
+        results = []
 
         data = conn.recv(4096)
+        self.first_rec_time = time.time()
         if data == b'':
-            print("ERROR: Inference signal stopped mid-transmission")
-            return
+            return None
+        num_results = data[0]
 
-        buf += data
-        while len(buf) >= 16:
-            result = struct.unpack("HHHHHf", buf[0:16])
-            results.append(result)
-            if len(buf) == 16:
-                buf = b''
-            else:
-                buf = buf[16:]
-            num_results -= 1
+        if len(data) == 1:
+            buf = b''
+        else:
+            data = data[1:]
+            buf += data
 
-    return results
+        while num_results > 0:
+
+            data = conn.recv(4096)
+            if data == b'':
+                print("ERROR: Inference signal stopped mid-transmission")
+                return
+
+            buf += data
+            while len(buf) >= 16:
+                result = struct.unpack("HHHHHf", buf[0:16])
+                results.append(result)
+                if len(buf) == 16:
+                    buf = b''
+                else:
+                    buf = buf[16:]
+                num_results -= 1
+
+        return results
+
+    def send_image(self, conn, img):
+        data = cv2.imencode(".png", img)[1].tostring()
+        conn.sendall(struct.pack("I", len(data)) + data)
+
+    def get_connections(self):
+        return Host.ConnectionIterator(self.conns.copy())
+
+    class ConnectionIterator:
+        def __init__(self, conns):
+            self.contents = conns
+            pass
+
+        def __iter__(self):
+            self.n = 0
+            return self
+
+        def __next__(self):
+            if self.n >= len(self.contents):
+                raise StopIteration
+            obj = self.contents[self.n]
+            self.n += 1
+            if not obj:
+                return self.__next__()
+            return obj
 
 
-def send_image(conn, img):
-    data = cv2.imencode(".png", img)[1].tostring()
-    conn.sendall(struct.pack("I", len(data)) + data)
 
 
 def main():
@@ -94,12 +111,10 @@ def main():
     parser.add_argument("--labels", "-l", help="Path of labels file")
     args = parser.parse_args()
 
+    host = Host(args.port)
+
     if args.labels:
         labels = di_utils.read_labels(args.labels)
-    sp = SocketPool(args.port)
-
-    input("Press enter to stop accepting connections and begin transmission\n")
-    sp.close_new = True
 
     img = cv2.imread(args.input)
     ih, iw = img.shape[:-1]
@@ -108,18 +123,18 @@ def main():
     else:
         frame = img
 
-    for idx, conn in enumerate(sp.get_connections()):
+    for idx, conn in enumerate(host.get_connections()):
         send_start = time.time()
-        send_image(conn[0], frame)
+        host.send_image(conn[0], frame)
         send_end = time.time()
-        result = get_infer_result(conn[0])
+        result = host.get_infer_result(conn[0])
         get_end = time.time()
         if result is None:
-            sp.remove_connection(conn)
+            host.remove_connection(conn)
             continue
         print("Connection {}: Send: {}ms | Gap: {}ms | Get: {}ms | Total: {}ms"
-              .format(idx, round((send_end - send_start) * 1000, 3), round((first_rec_time - send_end) * 1000, 3),
-                      round((get_end - first_rec_time) * 1000, 3), round((get_end - send_start) * 1000, 3)))
+              .format(idx, round((send_end - send_start) * 1000, 3), round((host.first_rec_time - send_end) * 1000, 3),
+                      round((get_end - host.first_rec_time) * 1000, 3), round((get_end - send_start) * 1000, 3)))
 
         labeled_img = np.copy(img)
 
