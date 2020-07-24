@@ -56,6 +56,7 @@ def main():
     while True:
 
         img = relay.get_image()
+        print("Received image", watch.numread)
 
         if img is None:
             break
@@ -107,7 +108,7 @@ def main():
         if watch.report():
             print("TCP Latency to source: ", round(measure_latency(host=args.ip, port=relay.port)[0], 3), "ms")
 
-        relay.close()
+    relay.close()
 
 
 

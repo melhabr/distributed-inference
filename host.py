@@ -8,14 +8,21 @@ import time
 
 import di_utils
 
+ENCODING = "JPG"
+
 class Host:
 
-    def __init__(self, port=8080):
+    def __init__(self, port=8080, verbose=False):
+
+        self.verbose = verbose
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.bind(('', port))
         self.s.listen()
         self.close_new = False
+        self.close_all = False
         self.conns = []
+
+        self.buf = b''
 
         t = threading.Thread(target=self.add_connections, daemon=True)
         t.start()
@@ -25,7 +32,7 @@ class Host:
         self.close_new = True
 
     def add_connections(self):
-        while True:
+        while not self.close_all:
             res = self.s.accept()
             if not self.close_new:
                 self.conns.append(res)
@@ -42,50 +49,63 @@ class Host:
         self.s.close()
 
     def get_infer_result(self, conn):
-        buf = b''
+
         results = []
+        if self.verbose:
+            print("Starting retrieval of message")
 
-        data = conn.recv(4096)
-        self.first_rec_time = time.time()
-        if data == b'':
-            return None
-        num_results = data[0]
+        if self.buf == b'':
 
-        if len(data) == 1:
-            buf = b''
+            self.buf = conn.recv(4096)
+            if self.buf == b'':
+                return None
+
+        num_results = self.buf[0]
+
+        if len(self.buf) == 1:
+            self.buf = b''
         else:
-            data = data[1:]
-            buf += data
+            self.buf = self.buf[1:]
+
+        self.first_rec_time = time.time()
+        if self.verbose:
+            print("Getting results with {} props".format(num_results))
 
         while num_results > 0:
 
-            data = conn.recv(4096)
-            if data == b'':
-                print("ERROR: Inference signal stopped mid-transmission")
-                return
-
-            buf += data
-            while len(buf) >= 16:
-                result = struct.unpack("HHHHHf", buf[0:16])
+            while len(self.buf) >= 16:
+                result = struct.unpack("HHHHHf", self.buf[0:16])
                 results.append(result)
-                if len(buf) == 16:
-                    buf = b''
+                if len(self.buf) == 16:
+                    self.buf = b''
                 else:
-                    buf = buf[16:]
+                    self.buf = self.buf[16:]
                 num_results -= 1
+                if self.verbose:
+                    print("Got prop {}. {} props left"
+                          .format(result, num_results))
+
+            if num_results > 0:
+                data = conn.recv(4096)
+                if data == b'':
+                    print("ERROR: Inference signal stopped mid-transmission")
+                    return
+
+                self.buf += data
 
         return results
 
     def send_image(self, conn, img):
-        data = cv2.imencode(".png", img)[1].tostring()
+        data = cv2.imencode("." + ENCODING, img)[1].tostring()
         conn.sendall(struct.pack("I", len(data)) + data)
 
     def get_connections(self):
-        return Host.ConnectionIterator(self.conns.copy())
+        return Host.ConnectionIterator(self)
 
     class ConnectionIterator:
-        def __init__(self, conns):
-            self.contents = conns
+        def __init__(self, host):
+            self.host = host
+            self.contents = host.conns.copy()
             pass
 
         def __iter__(self):
@@ -98,6 +118,7 @@ class Host:
             obj = self.contents[self.n]
             self.n += 1
             if not obj:
+                self.host.remove_connection(obj)
                 return self.__next__()
             return obj
 
@@ -129,9 +150,6 @@ def main():
         send_end = time.time()
         result = host.get_infer_result(conn[0])
         get_end = time.time()
-        if result is None:
-            host.remove_connection(conn)
-            continue
         print("Connection {}: Send: {}ms | Gap: {}ms | Get: {}ms | Total: {}ms"
               .format(idx, round((send_end - send_start) * 1000, 3), round((host.first_rec_time - send_end) * 1000, 3),
                       round((get_end - host.first_rec_time) * 1000, 3), round((get_end - send_start) * 1000, 3)))

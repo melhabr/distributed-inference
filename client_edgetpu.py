@@ -19,7 +19,7 @@ def main():
     parser.add_argument('-v', "--verbose", help="Print information about detected objects", action='store_true')
     args = parser.parse_args()
 
-    relay = Relay(args.ip)
+    relay = Relay(args.ip, args.verbose)
 
     engine = DetectionEngine(args.model)
 
@@ -27,10 +27,15 @@ def main():
 
     while True:
 
+        if args.verbose:
+            print("ready for next inference")
         img = relay.get_image()
 
         if img is None:
             break
+
+        if args.verbose:
+            print("Received image ", watch.numread)
 
         watch.start()
         initial_h, initial_w, _ = img.shape
@@ -45,22 +50,24 @@ def main():
         ans = engine.detect_with_input_tensor(frame.flatten(), threshold=0.5, top_k=10)
         watch.stop(Stopwatch.MODE_INFER)
 
+        if args.verbose:
+            print("Got inference results for frame ", watch.numread, ": ", ans)
+
         watch.start()
         # Display result
-        if ans:
-            results = []
-            for obj in ans:
-                box = obj.bounding_box.flatten().tolist()
-                bbox = [0] * 4
-                bbox[0] = int(box[0] * initial_w)
-                bbox[1] = int(box[1] * initial_h)
-                bbox[2] = int(box[2] * initial_w)
-                bbox[3] = int(box[3] * initial_h)
+        results = []
+        for obj in ans:
+            box = obj.bounding_box.flatten().tolist()
+            bbox = [0] * 4
+            bbox[0] = int(box[0] * initial_w)
+            bbox[1] = int(box[1] * initial_h)
+            bbox[2] = int(box[2] * initial_w)
+            bbox[3] = int(box[3] * initial_h)
 
-                result = (bbox, obj.label_id + 1, obj.score)
-                results.append(result)
+            result = (bbox, obj.label_id + 1, obj.score)
+            results.append(result)
 
-            relay.send_results(results)
+        relay.send_results(results)
 
         watch.stop(Stopwatch.MODE_POSTPROCESS)
 

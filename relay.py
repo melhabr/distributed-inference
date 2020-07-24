@@ -9,8 +9,9 @@ import cv2
 
 class Relay:
 
-    def __init__(self, ip):
+    def __init__(self, ip, verbose=False):
 
+        self.verbose = verbose
         s = ip.split(':')
         if len(s) > 1:
             self.ip = s[0]
@@ -23,6 +24,8 @@ class Relay:
         self.socket.connect((self.ip, self.port))
         self.images = []
         self.stop = False
+
+        self.buffer_lock = threading.Lock()
 
         self.t = threading.Thread(target=self.store_images, daemon=True)
         self.t.start()
@@ -48,6 +51,8 @@ class Relay:
             buf = buf[4:]
             remaining -= len(buf)
 
+            print("Receiving image of size ", remaining)
+
             while remaining > 0:
                 data = self.socket.recv(remaining)
                 if not data:
@@ -57,13 +62,21 @@ class Relay:
                 buf += data
                 remaining -= len(data)
 
-            img = cv2.imdecode(np.fromstring(buf, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if remaining < 0:
+                img = buf[:remaining]
+                buf = buf[remaining:]
+            else:
+                img = buf
+                buf = b''
+            img = cv2.imdecode(np.fromstring(img, dtype=np.uint8), cv2.IMREAD_COLOR)
 
-            self.images.append(img)
-            buf = b''
+            with self.buffer_lock:
+                self.images.append(img)
 
     def get_image(self):
 
+        if self.verbose:
+            print("Waiting to grab image")
         while not self.images:
             if self.stop:
                 break
@@ -71,7 +84,8 @@ class Relay:
         if self.stop:
             return None
 
-        return self.images.pop(0)
+        with self.buffer_lock:
+            return self.images.pop(0)
 
     def send_results(self, results):
 
