@@ -1,11 +1,92 @@
 import argparse
 import cv2
 import threading
+import time
 
 import numpy as np
 
 from host import Host
 import di_utils
+
+DEVICE_NAME_MAP = ["EdgeTPU", "Jetson", "UP Squared"]
+
+
+class StreamMeasurement:
+    MODE_SEND, MODE_GET = 0, 1
+
+    def __init__(self, name_map, report_interval=10):
+
+        self.report_interval = report_interval
+        self.name_map = name_map
+
+        self.start_times = [0.] * len(name_map)
+        self.send_times = [0.] * len(name_map)
+        self.get_times = [0.] * len(name_map)
+        self.send_recents = [0.] * len(name_map)
+        self.get_recents = [0.] * len(name_map)
+        self.numread = [0] * len(name_map)
+
+        self.last_report = -1000
+        self.start_time = time.time()
+
+    def start(self, device_num):
+
+        if device_num >= len(self.start_times):
+            raise ValueError("StreamMeasurement: Requested {} out of {} devices"
+                             .format(device_num, len(self.start_times)))
+
+        self.start_times[device_num] = time.time()
+
+    def stop(self, device_num, mode):
+
+        if mode not in range(2):
+            raise ValueError("StreamMeasurement: Bad mode")
+
+        if device_num >= len(self.start_times):
+            raise ValueError("StreamMeasurement: Requested {} out of {} devices"
+                             .format(device_num, len(self.start_times)))
+
+        if mode == StreamMeasurement.MODE_SEND:
+
+            self.send_recents[device_num] = time.time() - self.start_times[device_num]
+
+            self.send_times[device_num] = \
+                self.send_times[device_num] + (self.send_recents[device_num] - self.send_times[device_num]) / (
+                        self.numread[device_num] + 1)
+
+        elif mode == StreamMeasurement.MODE_GET:
+
+            self.get_recents[device_num] = time.time() - self.start_times[device_num]
+
+            self.get_times[device_num] = \
+                self.get_times[device_num] + (self.get_recents[device_num] - self.get_times[device_num]) / (
+                        self.numread[device_num] + 1)
+
+            self.numread[device_num] += 1
+
+    def report(self):
+
+        if sum(self.numread) == 0:
+            return False
+
+        if time.time() - self.last_report > self.report_interval:
+            print("----------------------------")
+            print("Average transmission statistics:")
+            for i, name in enumerate(self.name_map):
+                print(
+                    "{}: Send: {}ms (recent {}ms) | Get: {}ms (recent {}ms) | Total: {}ms (recent {}ms)"
+                    .format(name, round(self.send_times[i] * 1000, 3), round(self.send_recents[i] * 1000, 3),
+                            round(self.get_times[i] * 1000, 3), round(self.get_recents[i] * 1000, 3),
+                            round((self.get_times[i] + self.send_times[i]) * 1000, 3),
+                            round((self.get_recents[i] + self.send_recents[i]) * 1000, 3)))
+            print("Current FPS:", sum(self.numread)/ (time.time() - self.start_time))
+            print("Distribution:",
+                  " ".join(["{}: {}%".format(self.name_map[i], round(self.numread[i] * 100 / sum(self.numread), 2))
+                            for i in range(len(self.name_map))]))
+            self.last_report = time.time()
+            return True
+
+        return False
 
 
 class DistributedStream:
@@ -23,17 +104,22 @@ class DistributedStream:
         self.w = -1
         self.h = -1
         self.verbose = verbose
+        self.watch = StreamMeasurement(DEVICE_NAME_MAP)
 
     def run_inference(self, conn, img, frame_num, idx):
 
+        self.watch.start(idx)
+        self.host.send_image(conn[0], img)
         if self.verbose:
             print("Sent frame: ", frame_num)
+        self.watch.stop(idx, StreamMeasurement.MODE_SEND)
 
-        self.host.send_image(conn[0], img)
+        self.watch.start(idx)
         result = self.host.get_infer_result(conn[0])
         if result is None:
             print("Connection {} broken".format(idx))
             return
+        self.watch.stop(idx, StreamMeasurement.MODE_GET)
 
         if self.verbose:
             print("Got infer result for frame ", frame_num)
@@ -114,6 +200,8 @@ class DistributedStream:
                     break
 
             frame_num += 1
+
+            self.watch.report()
 
         self.final_frame = frame_num - 1
 
