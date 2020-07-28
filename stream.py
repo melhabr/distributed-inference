@@ -64,12 +64,12 @@ class StreamMeasurement:
 
             self.numread[device_num] += 1
 
-    def report(self):
+    def report(self, force=False):
 
         if sum(self.numread) == 0:
             return False
 
-        if time.time() - self.last_report > self.report_interval:
+        if time.time() - self.last_report > self.report_interval or force:
             print("----------------------------")
             print("Average transmission statistics:")
             for i, name in enumerate(self.name_map):
@@ -171,6 +171,7 @@ class DistributedStream:
         stitch_thread.start()
 
         frame_num = 0
+        self.watch.start_time = time.time()
 
         while vcap.isOpened():
 
@@ -202,6 +203,8 @@ class DistributedStream:
             frame_num += 1
 
             self.watch.report()
+
+        self.watch.report(force=True)
 
         self.final_frame = frame_num - 1
 

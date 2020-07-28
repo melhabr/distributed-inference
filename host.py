@@ -22,7 +22,7 @@ class Host:
         self.close_all = False
         self.conns = []
 
-        self.buf = b''
+        self.buffers = {}
 
         t = threading.Thread(target=self.add_connections, daemon=True)
         t.start()
@@ -36,6 +36,7 @@ class Host:
             res = self.s.accept()
             if not self.close_new:
                 self.conns.append(res)
+                self.buffers[id(res[0])] = b''
                 print("Added a new connection, {}. {} connections total"
                       .format(res, len(self.conns)))
 
@@ -51,21 +52,22 @@ class Host:
     def get_infer_result(self, conn):
 
         results = []
+        buf = self.buffers[id(conn)]
         if self.verbose:
             print("Starting retrieval of message")
 
-        if self.buf == b'':
+        if buf == b'':
 
-            self.buf = conn.recv(4096)
-            if self.buf == b'':
+            buf = conn.recv(4096)
+            if buf == b'':
                 return None
 
-        num_results = self.buf[0]
+        num_results = buf[0]
 
-        if len(self.buf) == 1:
-            self.buf = b''
+        if len(buf) == 1:
+            buf = b''
         else:
-            self.buf = self.buf[1:]
+            buf = buf[1:]
 
         self.first_rec_time = time.time()
         if self.verbose:
@@ -73,13 +75,13 @@ class Host:
 
         while num_results > 0:
 
-            while len(self.buf) >= 16:
-                result = struct.unpack("HHHHHf", self.buf[0:16])
+            while len(buf) >= 16:
+                result = struct.unpack("HHHHHf", buf[0:16])
                 results.append(result)
-                if len(self.buf) == 16:
-                    self.buf = b''
+                if len(buf) == 16:
+                    buf = b''
                 else:
-                    self.buf = self.buf[16:]
+                    buf = buf[16:]
                 num_results -= 1
                 if self.verbose:
                     print("Got prop {}. {} props left"
@@ -91,7 +93,7 @@ class Host:
                     print("ERROR: Inference signal stopped mid-transmission")
                     return
 
-                self.buf += data
+                buf += data
 
         return results
 
