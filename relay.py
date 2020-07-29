@@ -32,7 +32,7 @@ class Relay:
 
     def store_images(self):
 
-        buf = b''
+        buf = bytearray()
         if self.stop:
             return None
 
@@ -63,11 +63,12 @@ class Relay:
                 remaining -= len(data)
 
             if remaining < 0:
-                img = buf[:remaining]
+                img = bytes(buf[:remaining])
                 buf = buf[remaining:]
             else:
-                img = buf
-                buf = b''
+                img = bytes(buf)
+                buf = bytearray()
+
             img = cv2.imdecode(np.fromstring(img, dtype=np.uint8), cv2.IMREAD_COLOR)
 
             with self.buffer_lock:

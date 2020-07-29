@@ -10,6 +10,7 @@ import di_utils
 
 ENCODING = "JPG"
 
+
 class Host:
 
     def __init__(self, port=8080, verbose=False):
@@ -36,7 +37,7 @@ class Host:
             res = self.s.accept()
             if not self.close_new:
                 self.conns.append(res)
-                self.buffers[id(res[0])] = b''
+                self.buffers[id(res[0])] = bytearray()
                 print("Added a new connection, {}. {} connections total"
                       .format(res, len(self.conns)))
 
@@ -56,16 +57,16 @@ class Host:
         if self.verbose:
             print("Starting retrieval of message")
 
-        if buf == b'':
+        if len(buf) == 0:
 
-            buf = conn.recv(4096)
-            if buf == b'':
+            buf = bytearray(conn.recv(4096))
+            if len(buf) == 0:
                 return None
 
         num_results = buf[0]
 
         if len(buf) == 1:
-            buf = b''
+            buf = bytearray()
         else:
             buf = buf[1:]
 
@@ -79,7 +80,7 @@ class Host:
                 result = struct.unpack("HHHHHf", buf[0:16])
                 results.append(result)
                 if len(buf) == 16:
-                    buf = b''
+                    buf = bytearray()
                 else:
                     buf = buf[16:]
                 num_results -= 1
@@ -123,8 +124,6 @@ class Host:
                 self.host.remove_connection(obj)
                 return self.__next__()
             return obj
-
-
 
 
 def main():
