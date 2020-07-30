@@ -25,14 +25,14 @@ class Host:
 
         self.buffers = {}
 
-        t = threading.Thread(target=self.add_connections, daemon=True)
+        t = threading.Thread(target=self._add_connections, daemon=True)
         t.start()
         self.first_rec_time = 0
 
         input("Press enter to stop accepting connections and begin transmission\n")
         self.close_new = True
 
-    def add_connections(self):
+    def _add_connections(self):
         while not self.close_all:
             res = self.s.accept()
             if not self.close_new:
@@ -41,7 +41,7 @@ class Host:
                 print("Added a new connection, {}. {} connections total"
                       .format(res, len(self.conns)))
 
-    def remove_connection(self, conn):
+    def _remove_connection(self, conn):
         self.conns.remove(conn)
 
     def close(self):
@@ -103,9 +103,9 @@ class Host:
         conn.sendall(struct.pack("I", len(data)) + data)
 
     def get_connections(self):
-        return Host.ConnectionIterator(self)
+        return Host._ConnectionIterator(self)
 
-    class ConnectionIterator:
+    class _ConnectionIterator:
         def __init__(self, host):
             self.host = host
             self.contents = host.conns.copy()
@@ -121,7 +121,7 @@ class Host:
             obj = self.contents[self.n]
             self.n += 1
             if not obj:
-                self.host.remove_connection(obj)
+                self.host._remove_connection(obj)
                 return self.__next__()
             return obj
 
