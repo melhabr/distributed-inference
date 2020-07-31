@@ -106,7 +106,7 @@ class DistributedStream:
         self.verbose = verbose
         self.watch = StreamMeasurement(DEVICE_NAME_MAP)
 
-    def run_inference(self, conn, img, frame_num, idx):
+    def _run_inference(self, conn, img, frame_num, idx):
 
         self.watch.start(idx)
         self.host.send_image(conn[0], img)
@@ -140,7 +140,7 @@ class DistributedStream:
             self.labeled_frames.append((frame_num, labeled_img))
         self.ready[idx] = True
 
-    def stitch(self):
+    def _stitch(self):
 
         done = False
         current_frame = 0
@@ -167,7 +167,7 @@ class DistributedStream:
         self.w = int(vcap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.h = int(vcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        stitch_thread = threading.Thread(target=self.stitch)
+        stitch_thread = threading.Thread(target=self._stitch)
         stitch_thread.start()
 
         frame_num = 0
@@ -195,7 +195,7 @@ class DistributedStream:
                         continue
 
                     self.ready[idx] = False
-                    t = threading.Thread(target=self.run_inference, args=(conn, frame, frame_num, idx))
+                    t = threading.Thread(target=self._run_inference, args=(conn, frame, frame_num, idx))
                     t.start()
                     sent = True
                     break
