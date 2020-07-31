@@ -27,10 +27,10 @@ class Relay:
 
         self.buffer_lock = threading.Lock()
 
-        self.t = threading.Thread(target=self.store_images, daemon=True)
+        self.t = threading.Thread(target=self._store_images, daemon=True)
         self.t.start()
 
-    def store_images(self):
+    def _store_images(self):
 
         buf = bytearray()
         if self.stop:
