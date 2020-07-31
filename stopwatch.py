@@ -36,7 +36,7 @@ class Stopwatch:
         if mode == Stopwatch.MODE_POSTPROCESS:
             self.numread += 1
 
-    def report(self, force=True):
+    def report(self, force=False):
 
         if time.time() - self.last_report > self.report_interval or force:
             self.last_report = time.time()
